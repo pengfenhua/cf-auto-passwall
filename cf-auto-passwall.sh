@@ -1,8 +1,45 @@
 #!/bin/bash
-# better-cloudflare-ip
+
+# 使用说明：加在 openwrt 上系统 计划任务里 添加定时运行，如 0 4 * * 2,4,6 bash /root/cf-auto-passwall.sh > /dev/null
+# 0 4 * * 2,4,6 的意思是在每周二、周四、周六的凌晨4点会自动运行一次。/root/cf-auto-passwall.sh 是你脚本的绝对地址
+
+#########################################注意注意注意注意注意############################################
+
+# 1、请在脚本中修改你期望优选 IP 的带宽大小（默认50M）
+
+# 2、请更改 421 行 的 xxxxxxxxxx 字符串，为你自己 PassWall 的节点值（不会请看视频教程或是博客）
+
+######################################################################################################
+blue(){
+    echo -e "\033[34m\033[01m$1\033[0m"
+}
+green(){
+    echo -e "\033[32m\033[01m$1\033[0m"
+}
+red(){
+    echo -e "\033[31m\033[01m$1\033[0m"
+}
+clear
+green "=========================================================="
+ blue "用途：用于自动筛选 CF IP，并自动替换优选 IP 为 PassWall 的节点地址"
+ blue "网站： www.v2rayssr.com （已开启禁止国内访问）"
+ blue "YouTube频道：波仔分享"
+ blue "本脚本感谢 GitHub：Lbingyi 以及 Paniy"
+ blue "本教程视频演示地址：https://youtu.be/WzRHi9f9QKg"
+green "=========================================================="
+green "=========================================================="
+ red  "请在脚本中修改你期望优选 IP 的带宽大小（默认50M）脚本自动运行中....."
+ red  "脚本第42行 bandwidth 后面的数值为期望优选带宽大小（ Mbps ）  "
+green "=================脚本正在运行中.....======================="
+sleep 8s
+/etc/init.d/haproxy stop
+/etc/init.d/passwall stop
+localport=8443
+remoteport=443
 declare -i bandwidth
 declare -i speed
-read -p "请设置期望到 CloudFlare 服务器的带宽大小(单位 Mbps):" bandwidth
+#下面 bandwidth 参数为带宽大小，请自行设置，默认 50
+bandwidth=50
 speed=bandwidth*128*1024
 starttime=`date +'%Y-%m-%d %H:%M:%S'`
 while true
@@ -12,7 +49,7 @@ do
 		declare -i m
 		declare -i n
 		declare -i per
-		rm -rf icmp temp data.txt meta.txt log.txt anycast.txt temp.txt speed.txt
+		rm -rf icmp temp data.txt meta.txt log.txt anycast.txt temp.txt
 		mkdir icmp
 		while true
 		do
@@ -24,12 +61,12 @@ do
 				do
 					if [ ! -f "meta.txt" ]
 					then
-						curl --ipv4 --resolve speed.cloudflare.com:443:$resolveip --retry 3 -s https://speed.cloudflare.com/meta | sed -e 's/{//g' -e 's/}//g' -e 's/"//g' -e 's/,/\n/g'>meta.txt
+						curl --ipv4 --resolve speed.cloudflare.com:443:$resolveip --retry 3 -v https://speed.cloudflare.com/__down>meta.txt 2>&1
 					else
-						asn=$(cat meta.txt | grep asn: | awk -F: '{print $2}')
-						city=$(cat meta.txt | grep city: | awk -F: '{print $2}')
-						latitude=$(cat meta.txt | grep latitude: | awk -F: '{print $2}')
-						longitude=$(cat meta.txt | grep longitude: | awk -F: '{print $2}')
+						asn=$(cat meta.txt | grep cf-meta-asn: | tr '\r' '\n' | awk '{print $3}')
+						city=$(cat meta.txt | grep cf-meta-city: | tr '\r' '\n' | awk '{print $3}')
+						latitude=$(cat meta.txt | grep cf-meta-latitude: | tr '\r' '\n' | awk '{print $3}')
+						longitude=$(cat meta.txt | grep cf-meta-longitude: | tr '\r' '\n' | awk '{print $3}')
 						curl --ipv4 --resolve service.udpfile.com:443:$resolveip --retry 3 "https://service.udpfile.com?asn="$asn"&city="$city"" -o data.txt -#
 						break
 					fi
@@ -40,12 +77,12 @@ do
 				do
 					if [ ! -f "meta.txt" ]
 					then
-						curl --ipv4 --retry 3 -s https://speed.cloudflare.com/meta | sed -e 's/{//g' -e 's/}//g' -e 's/"//g' -e 's/,/\n/g'>meta.txt
+						curl --ipv4 --retry 3 -v https://speed.cloudflare.com/__down>meta.txt 2>&1
 					else
-						asn=$(cat meta.txt | grep asn: | awk -F: '{print $2}')
-						city=$(cat meta.txt | grep city: | awk -F: '{print $2}')
-						latitude=$(cat meta.txt | grep latitude: | awk -F: '{print $2}')
-						longitude=$(cat meta.txt | grep longitude: | awk -F: '{print $2}')
+						asn=$(cat meta.txt | grep cf-meta-asn: | tr '\r' '\n' | awk '{print $3}')
+						city=$(cat meta.txt | grep cf-meta-city: | tr '\r' '\n' | awk '{print $3}')
+						latitude=$(cat meta.txt | grep cf-meta-latitude: | tr '\r' '\n' | awk '{print $3}')
+						longitude=$(cat meta.txt | grep cf-meta-longitude: | tr '\r' '\n' | awk '{print $3}')
 						curl --ipv4 --retry 3 "https://service.udpfile.com?asn="$asn"&city="$city"" -o data.txt -#
 						break
 					fi
@@ -60,7 +97,7 @@ do
 		file=$(cat data.txt | grep file= | cut -f 2- -d'=')
 		url=$(cat data.txt | grep url= | cut -f 2- -d'=')
 		app=$(cat data.txt | grep app= | cut -f 2- -d'=')
-		if [ "$app" != "20210903" ]
+		if [ "$app" == "20210315" ]
 		then
 			echo 发现新版本程序: $app
 			echo 更新地址: $url
@@ -149,6 +186,7 @@ do
 			max=0
 			for i in `cat speed.txt`
 			do
+				max=$i
 				if [ $i -ge $max ]; then
 					max=$i
 				fi
@@ -184,6 +222,7 @@ do
 			max=0
 			for i in `cat speed.txt`
 			do
+				max=$i
 				if [ $i -ge $max ]; then
 					max=$i
 				fi
@@ -198,9 +237,9 @@ do
 			echo 峰值速度 $max kB/s
 			if [ $max1 -ge $max2 ]
 			then
-				curl --ipv4 --resolve service.udpfile.com:443:$first --retry 3 -s -X POST -d ''20210903-$first-$max1'' "https://service.udpfile.com?asn="$asn"&city="$city"" -o /dev/null --connect-timeout 5 --max-time 10
+				curl --ipv4 --resolve service.udpfile.com:443:$first --retry 3 -s -X POST -d ''20210315-$first-$max1'' "https://service.udpfile.com?asn="$asn"&city="$city"" -o /dev/null --connect-timeout 5 --max-time 10
 			else
-				curl --ipv4 --resolve service.udpfile.com:443:$first --retry 3 -s -X POST -d ''20210903-$first-$max2'' "https://service.udpfile.com?asn="$asn"&city="$city"" -o /dev/null --connect-timeout 5 --max-time 10
+				curl --ipv4 --resolve service.udpfile.com:443:$first --retry 3 -s -X POST -d ''20210315-$first-$max2'' "https://service.udpfile.com?asn="$asn"&city="$city"" -o /dev/null --connect-timeout 5 --max-time 10
 			fi
 			echo 第一次测试 $second
 			curl --resolve $domain:443:$second https://$domain/$file -o /dev/null --connect-timeout 5 --max-time 10 > log.txt 2>&1
@@ -225,6 +264,7 @@ do
 			max=0
 			for i in `cat speed.txt`
 			do
+				max=$i
 				if [ $i -ge $max ]; then
 					max=$i
 				fi
@@ -260,6 +300,7 @@ do
 			max=0
 			for i in `cat speed.txt`
 			do
+				max=$i
 				if [ $i -ge $max ]; then
 					max=$i
 				fi
@@ -274,9 +315,9 @@ do
 			echo 峰值速度 $max kB/s
 			if [ $max1 -ge $max2 ]
 			then
-				curl --ipv4 --resolve service.udpfile.com:443:$second --retry 3 -s -X POST -d ''20210903-$second-$max1'' "https://service.udpfile.com?asn="$asn"&city="$city"" -o /dev/null --connect-timeout 5 --max-time 10
+				curl --ipv4 --resolve service.udpfile.com:443:$second --retry 3 -s -X POST -d ''20210315-$second-$max1'' "https://service.udpfile.com?asn="$asn"&city="$city"" -o /dev/null --connect-timeout 5 --max-time 10
 			else
-				curl --ipv4 --resolve service.udpfile.com:443:$second --retry 3 -s -X POST -d ''20210903-$second-$max2'' "https://service.udpfile.com?asn="$asn"&city="$city"" -o /dev/null --connect-timeout 5 --max-time 10
+				curl --ipv4 --resolve service.udpfile.com:443:$second --retry 3 -s -X POST -d ''20210315-$second-$max2'' "https://service.udpfile.com?asn="$asn"&city="$city"" -o /dev/null --connect-timeout 5 --max-time 10
 			fi
 			echo 第一次测试 $third
 			curl --resolve $domain:443:$third https://$domain/$file -o /dev/null --connect-timeout 5 --max-time 10 > log.txt 2>&1
@@ -301,6 +342,7 @@ do
 			max=0
 			for i in `cat speed.txt`
 			do
+				max=$i
 				if [ $i -ge $max ]; then
 					max=$i
 				fi
@@ -336,6 +378,7 @@ do
 			max=0
 			for i in `cat speed.txt`
 			do
+				max=$i
 				if [ $i -ge $max ]; then
 					max=$i
 				fi
@@ -350,9 +393,9 @@ do
 			echo 峰值速度 $max kB/s
 			if [ $max1 -ge $max2 ]
 			then
-				curl --ipv4 --resolve service.udpfile.com:443:$third --retry 3 -s -X POST -d ''20210903-$third-$max1'' "https://service.udpfile.com?asn="$asn"&city="$city"" -o /dev/null --connect-timeout 5 --max-time 10
+				curl --ipv4 --resolve service.udpfile.com:443:$third --retry 3 -s -X POST -d ''20210315-$third-$max1'' "https://service.udpfile.com?asn="$asn"&city="$city"" -o /dev/null --connect-timeout 5 --max-time 10
 			else
-				curl --ipv4 --resolve service.udpfile.com:443:$third --retry 3 -s -X POST -d ''20210903-$third-$max2'' "https://service.udpfile.com?asn="$asn"&city="$city"" -o /dev/null --connect-timeout 5 --max-time 10
+				curl --ipv4 --resolve service.udpfile.com:443:$third --retry 3 -s -X POST -d ''20210315-$third-$max2'' "https://service.udpfile.com?asn="$asn"&city="$city"" -o /dev/null --connect-timeout 5 --max-time 10
 			fi
 		fi
 	done
@@ -365,17 +408,18 @@ done
 	start_seconds=$(date --date="$starttime" +%s)
 	end_seconds=$(date --date="$endtime" +%s)
 	clear
-	curl --ipv4 --resolve service.udpfile.com:443:$anycast --retry 3 -s -X POST -d ''20210903-$anycast-$max'' "https://service.udpfile.com?asn="$asn"&city="$city"" -o temp.txt
+	curl --ipv4 --resolve service.udpfile.com:443:$anycast --retry 3 -s -X POST -d ''20210315-$anycast-$max'' "https://service.udpfile.com?asn="$asn"&city="$city"" -o temp.txt
 	publicip=$(cat temp.txt | grep publicip= | cut -f 2- -d'=')
 	colo=$(cat temp.txt | grep colo= | cut -f 2- -d'=')
 	rm -rf temp.txt
-	echo $anycast>resolve.txt
 	echo 优选IP $anycast 满足 $bandwidth Mbps带宽需求
 	echo 公网IP $publicip
-	echo 自治域 AS$asn
-	echo 经纬度 $longitude,$latitude
-	echo META城市 $city
 	echo 实测带宽 $realbandwidth Mbps
 	echo 峰值速度 $max kB/s
 	echo 数据中心 $colo
 	echo 总计用时 $((end_seconds-start_seconds)) 秒
+	uci set passwall.xxxxxxxxxx.address=$anycast
+	uci commit passwall
+	/etc/init.d/haproxy restart
+	/etc/init.d/passwall restart
+	exit
